@@ -3,6 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
+import { markDailyAttendance } from '../../common/daily-attendance.js';
+import { forgetSessions } from '../../common/session-cache.js';
 
 @Injectable()
 export class AuthService {
@@ -14,19 +17,36 @@ export class AuthService {
   /**
    * Production-level login: validates email + password hash, returns JWT.
    */
-  async login(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      include: {
-        enrolments: {
-          include: {
-            batch: {
-              include: { program: true },
-            },
+  /** Mobile numbers are stored and compared as digits with an optional leading +. */
+  private normalizePhone(phone: string) {
+    const trimmed = phone.trim();
+    return (trimmed.startsWith('+') ? '+' : '') + trimmed.replace(/\D/g, '');
+  }
+
+  /** `identifier` is the account email, or its mobile number. */
+  async login(identifier: string, password: string) {
+    const include = {
+      enrolments: {
+        include: {
+          batch: {
+            include: { program: true },
           },
         },
       },
-    });
+    };
+
+    let user;
+    if (identifier.includes('@')) {
+      user = await this.prisma.user.findUnique({ where: { email: identifier }, include });
+    } else {
+      // a number only signs in when exactly one account holds it
+      const matches = await this.prisma.user.findMany({
+        where: { phone: { in: [this.normalizePhone(identifier), identifier.trim()] } },
+        include,
+        take: 2,
+      });
+      user = matches.length === 1 ? matches[0] : null;
+    }
 
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid email or password');
@@ -64,6 +84,10 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(accessPayload, { expiresIn: '15m' });
 
+    // signing in counts as attending today
+    // not awaited: it must not hold up the sign-in (it never throws)
+    if (user.role === Role.USER) void markDailyAttendance(this.prisma, user.id, 'visited');
+
     // Return user data with enrolled programs for tenant separation
     const enrolledPrograms = user.enrolments.map((e) => ({
       enrolmentId: e.id,
@@ -91,13 +115,22 @@ export class AuthService {
   /**
    * Production-level signup: hashes password, creates user, enrolls in programs, returns JWT.
    */
-  async signup(data: { name: string; email: string; password: string; programIds?: string[] }) {
+  async signup(data: { name: string; email: string; phone?: string; password: string; programIds?: string[] }) {
     // Check if user already exists
     const existing = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
     if (existing) {
       throw new ConflictException('An account with this email already exists');
+    }
+
+    // A mobile number may belong to one account only, so it can be used to sign in
+    const phone = data.phone ? this.normalizePhone(data.phone) : undefined;
+    if (phone) {
+      const phoneTaken = await this.prisma.user.findFirst({ where: { phone } });
+      if (phoneTaken) {
+        throw new ConflictException('An account with this mobile number already exists');
+      }
     }
 
     // Hash password with bcrypt (12 rounds)
@@ -107,6 +140,7 @@ export class AuthService {
       data: {
         email: data.email,
         name: data.name,
+        phone,
         passwordHash,
         role: Role.USER,
       },
@@ -264,7 +298,28 @@ export class AuthService {
         throw new UnauthorizedException({ message: 'User not found', error: 'INVALID_CREDENTIALS' });
       }
 
-      const session = await this.checkSession(payload.sessionId);
+      // Refresh tokens issued at login and signup carry no session id (the
+      // session is created after the token is signed), so the first renewal
+      // was always rejected and the learner was signed out. Find the session
+      // by its stored token hash in that case.
+      let sessionId: string | undefined = payload.sessionId;
+      if (!sessionId) {
+        const active = await this.prisma.userSession.findMany({
+          where: { userId: user.id, revokedAt: null },
+          orderBy: { createdAt: 'desc' },
+        });
+        for (const candidate of active) {
+          if (await bcrypt.compare(refreshTokenStr, candidate.token)) {
+            sessionId = candidate.id;
+            break;
+          }
+        }
+        if (!sessionId) {
+          throw new UnauthorizedException({ message: 'Session has been revoked', error: 'SESSION_REVOKED' });
+        }
+      }
+
+      const session = await this.checkSession(sessionId);
 
       // Verify token hash
       const isValid = await bcrypt.compare(refreshTokenStr, session.token);
@@ -274,6 +329,7 @@ export class AuthService {
           where: { id: session.id },
           data: { revokedAt: new Date(), revokedReason: 'TOKEN_REUSED' }
         });
+        forgetSessions();
         throw new UnauthorizedException({ message: 'Session revoked due to token reuse', error: 'SESSION_REVOKED' });
       }
 
@@ -283,7 +339,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         companyId: user.companyId,
-        sessionId: payload.sessionId,
+        sessionId,
       };
 
       const newRefreshToken = this.jwtService.sign(newPayload, {
@@ -305,7 +361,12 @@ export class AuthService {
       if (e instanceof UnauthorizedException) {
         throw e;
       }
-      throw new UnauthorizedException({ message: 'Invalid or expired refresh token', error: 'TOKEN_EXPIRED' });
+      // Only a bad or expired token is a 401. A database timeout used to be
+      // reported as "expired" too, which signed the learner out.
+      if (e?.name === 'TokenExpiredError' || e?.name === 'JsonWebTokenError' || e?.name === 'NotBeforeError') {
+        throw new UnauthorizedException({ message: 'Invalid or expired refresh token', error: 'TOKEN_EXPIRED' });
+      }
+      throw e;
     }
   }
 
@@ -313,7 +374,8 @@ export class AuthService {
    * Get user profile with tenant-specific enrolled programs.
    */
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    // the two lookups do not depend on each other, so they run together
+    const [user, sessions] = await Promise.all([this.prisma.user.findUnique({
       where: { id: userId },
       include: {
         enrolments: {
@@ -337,41 +399,43 @@ export class AuthService {
           },
         },
       },
-    });
+    }),
+      // upcoming sessions of every batch the user is in
+      this.prisma.session.findMany({
+        where: {
+          batch: { enrolments: { some: { userId } } },
+          endTime: { gt: new Date() }, // Only future or ongoing sessions
+        },
+        orderBy: { startTime: 'asc' },
+        take: 5,
+      }),
+    ]);
 
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
-    const batchIds = user.enrolments.map(e => e.batchId);
-    
-    // Fetch sessions for all batches the user is in
-    const sessions = await this.prisma.session.findMany({
-      where: {
-        batchId: { in: batchIds },
-        endTime: { gt: new Date() } // Only future or ongoing sessions
-      },
-      orderBy: { startTime: 'asc' },
-      take: 5
-    });
-
     const enrolledPrograms = user.enrolments.map((e) => {
       let totalItems = 0;
       let completedItems = 0;
+      // lessons and quizzes still to do, in course order (for "My Courses")
+      const pending: { stepId: string; step: number; stepTitle: string; title: string; kind: 'LESSON' | 'QUIZ' }[] = [];
 
-      const steps = e.batch?.program?.steps || [];
+      const steps = [...(e.batch?.program?.steps || [])].sort((x, y) => x.sequence - y.sequence);
       for (const step of steps) {
         // Count lessons
         for (const lesson of step.lessons || []) {
           totalItems++;
           const lp = e.lessonProgress?.find(p => p.lessonId === lesson.id);
           if (lp?.viewed) completedItems++;
+          else pending.push({ stepId: step.id, step: step.sequence, stepTitle: step.title, title: lesson.title, kind: 'LESSON' });
         }
         // Count quiz
         if (step.quiz) {
           totalItems++;
           const attempt = e.attempts?.find(a => a.quizId === step.quiz?.id && a.status === 'PASSED');
           if (attempt) completedItems++;
+          else pending.push({ stepId: step.id, step: step.sequence, stepTitle: step.title, title: 'Step quiz', kind: 'QUIZ' });
         }
       }
 
@@ -385,6 +449,9 @@ export class AuthService {
         programTitle: e.batch.program.title,
         status: e.status,
         progress: progress, // Dynamic progress added
+        totalItems,
+        completedItems,
+        pending,
       };
     });
 
@@ -405,39 +472,31 @@ export class AuthService {
   async createDeviceSession(userId: string, role: string, tokenHash: string): Promise<string> {
     const maxSessions = role === Role.USER ? 1 : 3;
 
-    const sessionId = await this.prisma.$transaction(async (tx) => {
-      // 1. Take advisory lock
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+    // Two statements in one transaction, instead of four: each statement is a
+    // round trip to the database. The lock makes two sign-ins at the same
+    // moment take turns; the second statement then revokes whatever exceeds
+    // the limit (keeping the newest maxSessions - 1) and adds the new session.
+    const id = randomUUID();
+    await this.prisma.$transaction([
+      this.prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`,
+      this.prisma.$executeRaw`
+        WITH revoked AS (
+          UPDATE "UserSession"
+          SET "revokedAt" = now(), "revokedReason" = 'NEW_LOGIN'
+          WHERE id IN (
+            SELECT id FROM "UserSession"
+            WHERE "userId" = ${userId} AND "revokedAt" IS NULL
+            ORDER BY "createdAt" DESC
+            OFFSET ${maxSessions - 1}
+          )
+        )
+        INSERT INTO "UserSession" (id, "userId", token, "lastActive", "createdAt")
+        VALUES (${id}, ${userId}, ${tokenHash}, now(), now())`,
+    ]);
+    const sessionId = id;
 
-      // 2. Find active sessions
-      const activeSessions = await tx.userSession.findMany({
-        where: { userId, revokedAt: null },
-        orderBy: { createdAt: 'asc' },
-      });
-
-      // 3. Revoke excess
-      if (activeSessions.length >= maxSessions) {
-        const toRevoke = activeSessions.slice(0, activeSessions.length - maxSessions + 1);
-        await tx.userSession.updateMany({
-          where: { id: { in: toRevoke.map(s => s.id) } },
-          data: {
-            revokedAt: new Date(),
-            revokedReason: 'NEW_LOGIN'
-          }
-        });
-      }
-
-      // 4. Create new
-      const newSession = await tx.userSession.create({
-        data: {
-          userId,
-          token: tokenHash,
-        }
-      });
-
-      return newSession.id;
-    });
-
+    // older sessions may just have been revoked
+    forgetSessions();
     return sessionId;
   }
 
@@ -468,6 +527,7 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'LOGOUT_ALL' }
     });
+    forgetSessions();
     
     await this.prisma.logAction({
       actorId: userId,

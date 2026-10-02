@@ -1,102 +1,159 @@
 "use client";
 
-import styles from "../layout.module.css";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { signOutEverywhere as leavePortal } from "../lib/site";
+import styles from "./profile.module.css";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+interface Profile {
+  name: string | null;
+  email: string;
+  phone?: string | null;
+  role: string;
+  enrolledPrograms: { programId: string; programTitle: string; batchName: string; status: string; progress?: number }[];
+  upcomingSessions?: { id: string }[];
+}
+
+/** The signed-in learner's account details and courses. */
 export default function ProfilePage() {
-  const pathname = usePathname();
+  const router = useRouter();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [certificates, setCertificates] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+    const headers = { Authorization: `Bearer ${token}` };
+    fetch(`${API_URL}/auth/me`, { headers })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(setProfile)
+      .catch(() => setProfile(null))
+      .finally(() => setLoading(false));
+    fetch(`${API_URL}/certificates/mine`, { headers })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list) => setCertificates(Array.isArray(list) ? list.length : 0))
+      .catch(() => setCertificates(0));
+  }, [router]);
+
+  const signOut = () => leavePortal();
+
+  // ends this account's sessions on every device, then signs out here
+  const signOutEverywhere = async () => {
+    setBusy(true);
+    try {
+      await fetch(`${API_URL}/auth/logout-all`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+    } finally {
+      signOut();
+    }
+  };
+
+  if (loading) return <div className={styles.frame}><p className={styles.muted}>Loading your profile...</p></div>;
+  if (!profile) return <div className={styles.frame}><p className={styles.muted}>We couldn&apos;t load your profile. Please refresh the page.</p></div>;
+
+  const displayName = profile.name || "Learner";
+  const initials = (profile.name || profile.email).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((n) => n[0]).join("").toUpperCase();
+  const accountType = profile.role === "USER" ? "Learner" : profile.role.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  const cohort = profile.enrolledPrograms[0]?.batchName;
+
+  const stats = [
+    { label: "Courses", value: profile.enrolledPrograms.length },
+    { label: "Scheduled Meetings", value: profile.upcomingSessions?.length ?? 0 },
+    { label: "Certificates", value: certificates },
+  ];
+
+  const details = [
+    { label: "Full Name", value: profile.name || "Not set" },
+    { label: "Email Address", value: profile.email },
+    { label: "Mobile Number", value: profile.phone || "Not set" },
+    { label: "Account Type", value: accountType },
+    { label: "Cohort", value: cohort || "Not enrolled" },
+  ];
 
   return (
-    <div className={styles.container}>
-      <aside className={styles.sidebar}>
-        <div className={styles.logo}>WhatBoutMe</div>
-        <nav className={styles.nav}>
-          <Link href="/" className={`${styles.navItem} ${pathname === '/' ? styles.active : ''}`}>
-            Dashboard
-          </Link>
-          <Link href="/live" className={`${styles.navItem} ${pathname === '/live' ? styles.active : ''}`}>
-            Live Sessions
-          </Link>
-          <Link href="/chat" className={`${styles.navItem} ${pathname === '/chat' ? styles.active : ''}`}>
-            Messages <span className={styles.badge}>2</span>
-          </Link>
-          <Link href="/certificates" className={`${styles.navItem} ${pathname === '/certificates' ? styles.active : ''}`}>
-            Certificates
-          </Link>
-          <Link href="/profile" className={`${styles.navItem} ${pathname === '/profile' ? styles.active : ''}`}>
-            Profile & Settings
-          </Link>
-        </nav>
-      </aside>
-      
-      <main className={styles.main}>
-        <header className={styles.header}>
-          <h2 className={styles.pageTitle}>Profile & Settings</h2>
-          <div className={styles.userMenu}>
-            <div className={styles.avatar}>ED</div>
-            <span className={styles.userName}>Emma Davis</span>
+    <div className={styles.frame}>
+      <article className={styles.panel}>
+        <div className={styles.cover} />
+
+        <header className={styles.head}>
+          <span className={styles.avatarWrap}>
+            <span className={styles.avatar}>{initials}</span>
+            <span className={styles.mark} title="Verified learner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+            </span>
+          </span>
+          <div className={styles.identity}>
+            <h1>{displayName}</h1>
+            <p>{profile.email}</p>
+            <div className={styles.badges}>
+              <span className={styles.badge}>{accountType}</span>
+              {cohort && <span className={`${styles.badge} ${styles.badgePlain}`}>{cohort}</span>}
+            </div>
+          </div>
+          <div className={styles.actions}>
+            <button type="button" onClick={signOut} className={styles.darkBtn}>Sign Out</button>
+            <button type="button" onClick={signOutEverywhere} disabled={busy} className={styles.lineBtn}>
+              {busy ? "Signing Out..." : "Sign Out of All Devices"}
+            </button>
           </div>
         </header>
 
-        <div className={styles.content}>
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-light)',
-            padding: '2.5rem',
-            borderRadius: '20px',
-            maxWidth: '600px',
-            boxShadow: 'var(--shadow-sm)'
-          }}>
-            <h3 style={{marginTop: 0, marginBottom: '2rem', color: 'var(--text-primary)'}}>Account Information</h3>
-            
-            <div style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
-              <div>
-                <label style={{display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)'}}>Full Name</label>
-                <input type="text" defaultValue="Emma Davis" style={{
-                  width: '100%', padding: '1rem', borderRadius: '12px', 
-                  border: '1px solid var(--border-light)', background: 'var(--bg-main)', 
-                  color: 'var(--text-primary)', outline: 'none'
-                }} />
-              </div>
-              
-              <div>
-                <label style={{display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)'}}>Email Address</label>
-                <input type="email" defaultValue="emma@example.com" disabled style={{
-                  width: '100%', padding: '1rem', borderRadius: '12px', 
-                  border: '1px solid var(--border-light)', background: 'var(--bg-main)', 
-                  color: 'var(--text-secondary)', outline: 'none', opacity: 0.7
-                }} />
-              </div>
-              
-              <div>
-                <label style={{display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)'}}>Time Zone</label>
-                <select style={{
-                  width: '100%', padding: '1rem', borderRadius: '12px', 
-                  border: '1px solid var(--border-light)', background: 'var(--bg-main)', 
-                  color: 'var(--text-primary)', outline: 'none'
-                }}>
-                  <option>Asia/Dubai (GST)</option>
-                  <option>Europe/London (GMT)</option>
-                  <option>America/New_York (EST)</option>
-                </select>
-              </div>
-
-              <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
-                <button style={{
-                  background: 'var(--accent-primary)', color: 'white', border: 'none', 
-                  padding: '1rem 2rem', borderRadius: '12px', cursor: 'pointer', fontWeight: 600
-                }}>Save Changes</button>
-                <button style={{
-                  background: 'transparent', color: 'var(--text-primary)', 
-                  border: '1px solid var(--border-light)', padding: '1rem 2rem', 
-                  borderRadius: '12px', cursor: 'pointer', fontWeight: 600
-                }}>Change Password</button>
-              </div>
+        <dl className={styles.stats}>
+          {stats.map((s) => (
+            <div key={s.label}>
+              <dd>{s.value}</dd>
+              <dt>{s.label}</dt>
             </div>
-          </div>
+          ))}
+        </dl>
+
+        <div className={styles.columns}>
+          <section>
+            <h2 className={styles.sectionTitle}>Account Details</h2>
+            <dl className={styles.detailList}>
+              {details.map((d) => (
+                <div key={d.label}>
+                  <dt>{d.label}</dt>
+                  <dd>{d.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className={styles.note}>To change your name, email or password, contact your programme manager.</p>
+          </section>
+
+          <section>
+            <h2 className={styles.sectionTitle}>My Courses</h2>
+            {profile.enrolledPrograms.length === 0 ? (
+              <p className={styles.muted}>You have not enrolled in a course yet.</p>
+            ) : (
+              <ul className={styles.courseList}>
+                {profile.enrolledPrograms.map((p) => (
+                  <li key={p.programId}>
+                    <Link href={`/programs/${p.programId}/steps`} className={styles.course}>
+                      <span className={styles.courseText}>
+                        <strong>{p.programTitle}</strong>
+                        <span>Cohort: {p.batchName}</span>
+                      </span>
+                      <span className={styles.courseProgress}>{p.progress ?? 0}%</span>
+                      <span className={styles.open}>Open</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
-      </main>
+      </article>
     </div>
   );
 }

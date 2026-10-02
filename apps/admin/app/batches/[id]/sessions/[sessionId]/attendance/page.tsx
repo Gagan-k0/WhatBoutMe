@@ -51,14 +51,10 @@ export default function SessionAttendancePage({ params }: { params: Promise<{ id
 
   const markAttendance = async (userId: string) => {
     try {
-      // Assuming we have the auth token in localStorage for Admin requests
-      const token = localStorage.getItem('whatboutme_admin_token') || localStorage.getItem('whatboutme_token');
+      // the AuthProvider adds the sign-in token to API requests
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/sessions/${sessionId}/override-attendance`, {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` 
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId })
       });
       if (res.ok) {

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import "./globals.css";
+import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import AdminShell from "./AdminShell";
 import AuthProvider from "./AuthProvider";
+
+// same family as the public website
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans", display: "swap" });
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -26,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={`${dmSans.variable} ${geistSans.variable} ${geistMono.variable}`}>
         <AuthProvider>
           <AdminShell>{children}</AdminShell>
         </AuthProvider>

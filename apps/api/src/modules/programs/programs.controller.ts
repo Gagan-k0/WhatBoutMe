@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Request } from '@nestjs/common';
 import { ProgramsService } from './programs.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
@@ -72,6 +72,13 @@ export class ProgramsController {
   @Post(':id/steps')
   createStep(@Param('id') id: string, @Body() data: CreateStepDto) {
     return this.programsService.createStep(id, data);
+  }
+
+  // Learner: finished this step (video watched, quiz passed)
+  @Post('steps/:stepId/complete')
+  completeStep(@Param('stepId') stepId: string, @Body('score') score: unknown, @Request() req: any) {
+    const value = typeof score === 'number' && score >= 0 && score <= 100 ? Math.round(score) : undefined;
+    return this.programsService.completeStep(stepId, req.user.sub, value);
   }
 
   @Get('steps/:stepId')

@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { UnauthorizedException } from '@nestjs/common';
+import { rememberLiveSession, sessionKnownLive } from '../../common/session-cache.js';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -15,13 +16,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    if (payload.sessionId) {
+    if (payload.sessionId && !sessionKnownLive(payload.sessionId)) {
       const session = await this.prisma.userSession.findUnique({
         where: { id: payload.sessionId }
       });
-      if (!session) {
-        throw new UnauthorizedException('Session expired or logged in from another device');
+      // A revoked row still exists, so checking for the row alone let an
+      // ended session keep working until its access token expired.
+      if (!session || session.revokedAt) {
+        throw new UnauthorizedException({ message: 'Session has been revoked', error: 'SESSION_REVOKED' });
       }
+      rememberLiveSession(payload.sessionId);
       
       // Optionally update lastActive here (may cause many DB writes, usually skipped or debounced)
     }

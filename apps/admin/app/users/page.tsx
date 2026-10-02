@@ -28,6 +28,19 @@ export default function UsersPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [cohort, setCohort] = useState("");
+  const [role, setRole] = useState("USER");
+  const [password, setPassword] = useState("");
+  const [formError, setFormError] = useState("");
+  // only a super admin may create another super admin
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    try {
+      setIsSuperAdmin(JSON.parse(localStorage.getItem("user") || "{}").role === "SUPER_ADMIN");
+    } catch {
+      setIsSuperAdmin(false);
+    }
+  }, []);
 
   useEffect(() => {
     Promise.all([fetchUsers(), fetchBatches()]);
@@ -77,6 +90,9 @@ export default function UsersPage() {
     setFirstName(names[0] || "");
     setLastName(names.slice(1).join(" ") || "");
     setCohort(""); // Real implementation would resolve cohort to batch ID
+    setRole(user.role || "USER");
+    setPassword("");
+    setFormError("");
     setIsModalOpen(true);
     setActiveDropdown(null);
   };
@@ -87,6 +103,9 @@ export default function UsersPage() {
     setFirstName("");
     setLastName("");
     setCohort("");
+    setRole("USER");
+    setPassword("");
+    setFormError("");
     setIsModalOpen(true);
   };
 
@@ -109,11 +128,13 @@ export default function UsersPage() {
 
   const handleSaveUser = async (e: FormEvent) => {
     e.preventDefault();
+    setFormError("");
+    // only the fields the API accepts; a blank password on edit leaves it unchanged
     const payload = {
       email,
-      name: `${firstName} ${lastName}`,
-      passwordHash: "Learner@2026", // Default password for new invites
-      role: "USER",
+      name: `${firstName} ${lastName}`.trim(),
+      role,
+      ...(password ? { password } : {}),
     };
 
     try {
@@ -139,9 +160,15 @@ export default function UsersPage() {
         setLastName("");
         setEditingUserId(null);
         fetchUsers();
+      } else {
+        // the API wraps errors as { error: { code, message } }
+        const data = await res.json().catch(() => null);
+        const raw = data?.error?.message ?? data?.message;
+        setFormError((Array.isArray(raw) ? raw.join(", ") : raw) || `Could not save the user (error ${res.status}).`);
       }
     } catch (e) {
       console.error("Failed to save user", e);
+      setFormError("Could not reach the server. Check that the API is running.");
     }
   };
 
@@ -154,7 +181,7 @@ export default function UsersPage() {
         </div>
         <div className={styles.headerActions}>
           <button className={styles.secondaryBtn}>Filter</button>
-          <button className={styles.primaryBtn} onClick={openCreateModal}>+ Invite User</button>
+          <button className={styles.primaryBtn} onClick={openCreateModal}>+ Add User</button>
         </div>
       </header>
 
@@ -244,13 +271,13 @@ export default function UsersPage() {
         <div className={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
           <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2>{editingUserId ? "Edit User" : "Invite New Learner"}</h2>
+              <h2>{editingUserId ? "Edit User" : "Add New User"}</h2>
               <button className={styles.closeBtn} onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             
             <form className={styles.modalForm} onSubmit={handleSaveUser}>
               <div className={styles.formGroup}>
-                <label>Learner Email</label>
+                <label>Email</label>
                 <input type="email" placeholder="name@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
               </div>
 
@@ -265,6 +292,22 @@ export default function UsersPage() {
                 </div>
               </div>
               
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>Role</label>
+                  <select value={role} onChange={e => setRole(e.target.value)}>
+                    <option value="USER">Learner</option>
+                    <option value="MANAGER">Manager</option>
+                    <option value="ADMIN">Admin</option>
+                    {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
+                  </select>
+                </div>
+                <div className={styles.formGroup}>
+                  <label>{editingUserId ? "New Password (optional)" : "Temporary Password"}</label>
+                  <input type="text" autoComplete="off" minLength={8} required={!editingUserId} placeholder={editingUserId ? "Leave blank to keep current" : "At least 8 characters"} value={password} onChange={e => setPassword(e.target.value)} />
+                </div>
+              </div>
+
               <div className={styles.formGroup}>
                 <label>Assign to Cohort (Optional)</label>
                 <select value={cohort} onChange={e => setCohort(e.target.value)}>
@@ -275,9 +318,13 @@ export default function UsersPage() {
                 </select>
               </div>
 
+              {formError && (
+                <p role="alert" style={{ margin: 0, padding: '0.75rem 1rem', borderRadius: '8px', background: '#fef2f2', color: '#b91c1c', fontSize: '0.85rem' }}>{formError}</p>
+              )}
+
               <div className={styles.modalFooter}>
                 <button type="button" className={styles.secondaryBtn} onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className={styles.primaryBtn}>{editingUserId ? "Save Changes" : "Send Invite"}</button>
+                <button type="submit" className={styles.primaryBtn}>{editingUserId ? "Save Changes" : "Add User"}</button>
               </div>
             </form>
           </div>

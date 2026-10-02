@@ -109,8 +109,13 @@
 
 .logoutBtn {
   width: 100%;
-  padding: 0.75rem;
-  text-align: center;
+  /* same row layout as the nav items above it */
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  text-align: left;
+  line-height: 1;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
@@ -130,6 +135,8 @@
 .mainWrapper {
   margin-left: 260px;
   flex: 1;
+  /* a flex child will not shrink below its content without this */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -154,8 +161,10 @@
   align-items: center;
   background: var(--bg-main);
   border-radius: 8px;
-  padding: 0.5rem 1rem;
-  width: 320px;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  width: 400px;
+  max-width: 100%;
   border: 1px solid transparent;
   transition: border-color 0.2s ease;
 }
@@ -169,9 +178,9 @@
 .searchIcon {
   font-size: 0.9rem;
   opacity: 0.5;
-  margin-right: 0.5rem;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .searchShortcut {
@@ -179,17 +188,22 @@
   color: var(--text-secondary);
   background: var(--bg-card);
   border: 1px solid var(--border-light);
-  padding: 0.1rem 0.4rem;
+  padding: 0.2rem 0.45rem;
   border-radius: 4px;
-  margin-left: auto;
   font-weight: 600;
+  line-height: 1;
+  /* keep "Ctrl K" on one line and stop the input squeezing it */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .searchInput {
   border: none;
   background: transparent;
   outline: none;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
   font-size: 0.9rem;
   color: var(--text-primary);
 }

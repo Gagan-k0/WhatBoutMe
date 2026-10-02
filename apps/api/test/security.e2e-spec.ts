@@ -77,13 +77,18 @@ describe('Security and Concurrency (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.certificate.deleteMany();
-    await prisma.invoice.deleteMany();
-    await prisma.enrolment.deleteMany();
-    await prisma.batch.deleteMany();
-    await prisma.program.deleteMany();
-    await prisma.userSession.deleteMany();
-    await prisma.user.deleteMany();
+    // Only remove what this suite created. These tests run against the
+    // database in .env, and unscoped deleteMany() calls here once wiped every
+    // account and programme in it.
+    const userIds = [user1Id, user2Id, managerId].filter(Boolean);
+    const mine = { OR: [{ userId: { in: userIds } }, { programId }] };
+    await prisma.certificate.deleteMany({ where: { enrolment: mine } });
+    if (user1InvoiceId) await prisma.invoice.deleteMany({ where: { id: user1InvoiceId } });
+    await prisma.enrolment.deleteMany({ where: mine });
+    await prisma.batch.deleteMany({ where: { programId } });
+    await prisma.program.deleteMany({ where: { id: programId } });
+    await prisma.userSession.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await app.close();
   });
 

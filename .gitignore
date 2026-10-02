@@ -61,3 +61,6 @@ CODEBASE.md
 .agents/
 .claude/
 .cursor/
+
+# files the API stores on disk (uploads, website content)
+apps/api/storage/

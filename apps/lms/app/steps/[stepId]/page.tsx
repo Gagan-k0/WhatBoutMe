@@ -26,7 +26,7 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
       .then(data => {
         setStep(data);
         
-        const lesson = data.lessons?.[0];
+        const lesson = data.lessons?.find((l: any) => l.type !== "PDF");
         
         if (lesson && lesson.id) {
           // Fetch the secure playback token from the API
@@ -71,8 +71,21 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
     );
   }
 
-  const lesson = step.lessons?.[0]; // Show first lesson for now
+  const lesson = step.lessons?.find((l: any) => l.type !== "PDF"); // first video
+  const documents = (step.lessons || []).filter((l: any) => l.type === "PDF");
   const quiz = step.quiz;
+
+  // Tells the server the step is finished, so progress and today's attendance
+  // are recorded on the account and not only in this browser.
+  const recordCompletion = (score?: number) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/programs/steps/${stepId}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(score === undefined ? {} : { score }),
+    }).catch(() => {});
+  };
 
   const handleOptionChange = (qId: string, oId: string) => {
     setAnswers(prev => ({ ...prev, [qId]: oId }));
@@ -101,6 +114,7 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
           localStorage.setItem(`progress_${step.programId}`, nextSequence.toString());
         }
       }
+      recordCompletion(scorePercentage);
       setQuizResult({ passed: true, score: scorePercentage, message: `Great job! You scored ${scorePercentage}% and passed the step.` });
     } else {
       setQuizResult({ passed: false, score: scorePercentage, message: `You scored ${scorePercentage}%. You need ${quiz.passMark}% to pass. Try again!` });
@@ -123,15 +137,40 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
                 playbackId={playbackId || "DS00Spx1CV902MCtPj5WknGlR102V5HFkDe"}
                 tokens={playbackToken ? { playback: playbackToken } : undefined}
                 metadata={{ video_title: lesson.title }}
+                // a step with no quiz is finished when its video ends
+                onEnded={() => {
+                  if (!quiz) recordCompletion();
+                }}
                 style={{ width: "100%", aspectRatio: "16/9" }}
               />
               <div style={{ marginTop: "10px", fontWeight: "bold" }}>{lesson.title}</div>
             </div>
           ) : (
             <div className={styles.videoContainer}>
-              <div className={styles.videoPlaceholder} style={{ textAlign: "center", padding: "40px", background: "#f5f5f5", borderRadius: "12px" }}>
+              <div className={styles.videoPlaceholder} style={{ textAlign: "center", padding: "40px", background: "var(--bg-soft)", borderRadius: "12px" }}>
                 <p>No video content uploaded for this step yet.</p>
               </div>
+            </div>
+          )}
+
+          {documents.length > 0 && (
+            <div style={{ marginTop: "24px" }}>
+              <h2 style={{ fontSize: "1.1rem", margin: "0 0 12px" }}>Documents</h2>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
+                {documents.map((doc: any) => (
+                  <li key={doc.id}>
+                    <a
+                      href={doc.mediaUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 16px", border: "1px solid var(--border-light)", borderRadius: "12px", background: "var(--bg-card)", color: "var(--text-primary)", textDecoration: "none", fontWeight: 600 }}
+                    >
+                      <span>{doc.title}</span>
+                      <span style={{ color: "var(--accent-primary)", fontSize: "0.85rem" }}>Open PDF</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           
@@ -149,7 +188,7 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
               <>
                 <p className={styles.quizDesc}>You must score {quiz.passMark}% to unlock the next step.</p>
                 {quizResult && (
-                  <div style={{ padding: "12px", borderRadius: "8px", marginBottom: "15px", backgroundColor: quizResult.passed ? "#e6f4ea" : "#fce8e6", color: quizResult.passed ? "#137333" : "#c5221f" }}>
+                  <div style={{ padding: "12px", borderRadius: "8px", marginBottom: "15px", backgroundColor: quizResult.passed ? "var(--status-success-bg)" : "var(--status-error-bg)", color: quizResult.passed ? "var(--status-success)" : "var(--status-error)" }}>
                     <strong>{quizResult.passed ? "Passed!" : "Keep Trying!"}</strong>
                     <p style={{ margin: "4px 0 0 0", fontSize: "0.9rem" }}>{quizResult.message}</p>
                   </div>
@@ -162,7 +201,7 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
                         <p style={{ fontWeight: "600", marginBottom: "8px" }}>{i + 1}. {q.text}</p>
                         <div className={styles.options} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                           {q.options?.map((opt: any) => (
-                            <label key={opt.id} className={styles.option} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px", background: answers[q.id] === opt.id ? "#e8f0fe" : "#f9f9f9", border: answers[q.id] === opt.id ? "1px solid var(--accent-primary)" : "1px solid transparent", borderRadius: "6px", cursor: "pointer" }}>
+                            <label key={opt.id} className={styles.option} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px", background: answers[q.id] === opt.id ? "var(--accent-highlight)" : "var(--bg-soft)", border: answers[q.id] === opt.id ? "1px solid var(--accent-primary)" : "1px solid transparent", borderRadius: "6px", cursor: "pointer" }}>
                               <input type="radio" name={`q_${q.id}`} value={opt.id} checked={answers[q.id] === opt.id} onChange={() => handleOptionChange(q.id, opt.id)} /> 
                               {opt.text}
                             </label>
@@ -191,7 +230,7 @@ export default function StepPage({ params }: { params: Promise<{ stepId: string 
           {/* Resources */}
           <div className={styles.resourceCard} style={{ marginTop: "20px" }}>
             <h3>Resources</h3>
-            <p style={{ color: "#666", fontSize: "0.9rem" }}>No resources attached.</p>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>No resources attached.</p>
           </div>
         </div>
       </div>

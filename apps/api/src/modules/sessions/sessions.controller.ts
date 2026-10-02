@@ -24,6 +24,18 @@ export class SessionsController {
     return this.sessionsService.getSessionsByBatch(batchId);
   }
 
+  // Learner: their own sessions with attendance
+  @Get('mine')
+  getMySessions(@Request() req: any) {
+    return this.sessionsService.getMySessions(req.user.sub);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @Get('all')
+  getAllSessions() {
+    return this.sessionsService.getAllSessions();
+  }
+
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Post()
   createSession(@Body() body: CreateSessionDto) {

@@ -9,7 +9,8 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 2.5rem;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .welcomeText {
@@ -23,10 +24,10 @@
 }
 
 .title {
-  font-size: 2.5rem;
+  font-size: var(--text-2xl);
   font-weight: 800;
   color: var(--text-primary);
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.25rem 0;
   letter-spacing: -0.02em;
 }
 
@@ -128,7 +129,7 @@
   justify-content: center;
 }
 
-.statGreen { background: #ebf5ee; color: #215b3d; }
+.statGreen { background: var(--accent-highlight); color: var(--accent-primary); }
 .statPurple { background: #f0eaff; color: #6b46c1; }
 .statOrange { background: #fff3e0; color: #c05621; }
 
@@ -157,7 +158,7 @@
   font-weight: 600;
 }
 
-.badgeGreen { background: #e8f5ed; color: #15803d; }
+.badgeGreen { background: var(--status-success-bg); color: var(--status-success); }
 .badgePurple { background: #f3f0ff; color: #6b46c1; }
 .badgeOrange { background: #fff7ed; color: #c2410c; }
 
@@ -191,7 +192,7 @@
   border: 1px solid var(--border-light);
   border-radius: 20px;
   box-shadow: var(--shadow-md);
-  padding: 2rem;
+  padding: 1.5rem;
   overflow: hidden;
 }
 
@@ -199,7 +200,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .sectionHeader h2 {
@@ -288,9 +290,17 @@
 
 .adminTable {
   width: 100%;
+  /* fixed: columns share the width that is there, so the table can never be
+     wider than its card and push the page sideways */
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
+}
+
+/* the first column is the name of the thing in the row and gets more room */
+.adminTable th:first-child {
+  width: 26%;
 }
 
 .adminTable th {
@@ -300,17 +310,38 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-light);
+  /* a heading split over two lines ("START / DATE") makes the row look uneven */
+  white-space: nowrap;
 }
 
 .adminTable th:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
 .adminTable th:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
 
 .adminTable td {
-  padding: 1.25rem 1.5rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-light);
   vertical-align: middle;
+}
+
+/* Every cell is one line: long text is cut with "…" instead of wrapping, so
+   all rows are the same height. The last cell is left alone because its
+   action menu opens outside the cell and would be clipped. */
+.adminTable td:not(:last-child) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the action column: wide enough for the "…" menu. A table whose rows carry
+   a labelled button as well sets a wider width on its own Action heading. */
+.adminTable th:last-child {
+  width: 6rem;
+}
+
+.adminTable td:last-child {
+  white-space: nowrap;
 }
 
 .adminTable tr:last-child td {
@@ -338,7 +369,7 @@
   font-weight: 600;
   font-size: 0.9rem;
 }
-.avatar1 { background: #e8f5ed; color: #15803d; }
+.avatar1 { background: var(--accent-highlight); color: var(--accent-primary); }
 .avatar2 { background: #e0f2fe; color: #0369a1; }
 .avatar3 { background: #ffe4e6; color: #be123c; }
 .avatar4 { background: #f3f0ff; color: #6b46c1; }
@@ -381,7 +412,7 @@
   font-weight: 600;
 }
 .roleAdmin { color: #8b5cf6; }
-.roleUser { color: #3b82f6; }
+.roleUser { color: var(--accent-primary); }
 .roleManager { color: #15803d; }
 
 .actionBtn {
@@ -455,10 +486,48 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--text-disabled);
-  padding: 0.25rem;
+  color: var(--text-secondary);
+  width: 2.25rem;
+  height: 2.25rem;
   display: inline-flex;
-  border-radius: 4px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+/* Table row actions: a labelled action beside the "more" menu, on one line */
+.rowActions {
+  display: flex;
+  /* never wraps: the button and the menu always share one line */
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.rowActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2.25rem;
+  padding: 0 0.85rem;
+  border: 1px solid var(--accent-primary);
+  border-radius: 8px;
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.rowActionBtn:hover:not(:disabled) {
+  border-color: var(--accent-primary-hover);
+  background: var(--accent-primary-hover);
+}
+.rowActionBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .iconActionBtn:hover {
   color: var(--text-primary);
@@ -729,6 +798,12 @@
   border-top: 1px solid var(--border-light);
 }
 
+.formGroup textarea {
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 @media (max-width: 720px) {
   .header,
   .headerActions,
@@ -753,4 +828,9 @@
   .tableWrapper { overflow-x: auto; }
   .adminTable { min-width: 620px; }
   .rowActions { gap: 0.35rem; }
+}
+
+.primaryBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

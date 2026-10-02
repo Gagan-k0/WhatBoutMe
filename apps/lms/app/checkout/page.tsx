@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import styles from "../login/auth.module.css";
+import { SITE_URL } from "../lib/site";
 
 function CheckoutContent() {
   const router = useRouter();
@@ -59,8 +60,8 @@ function CheckoutContent() {
         },
         body: JSON.stringify({ programId }),
       });
-      // Redirect to dashboard after successful payment/enrolment
-      router.push("/");
+      // straight to My Courses, where the course just bought now appears
+      router.push("/courses");
     } catch (e) {
       console.error("Payment failed", e);
       setProcessing(false);
@@ -77,7 +78,7 @@ function CheckoutContent() {
         <div className={styles.authCard}>
           <h2>Course Not Found</h2>
           <p>We couldn't find the program you are trying to enroll in.</p>
-          <Link href="http://localhost:3001/programs" className={styles.submitBtn} style={{ display: "inline-block", textDecoration: "none" }}>
+          <Link href={`${SITE_URL}/courses`} className={styles.submitBtn} style={{ display: "inline-block", textDecoration: "none" }}>
             Go Back
           </Link>
         </div>
@@ -91,7 +92,7 @@ function CheckoutContent() {
         <h1 className={styles.logo}>Checkout</h1>
         <h2 style={{ fontSize: "1.2rem", marginBottom: "1.5rem" }}>Order Summary</h2>
 
-        <div style={{ background: "var(--bg-main)", padding: "1.5rem", borderRadius: "12px", textAlign: "left", marginBottom: "1.5rem", border: "1px solid var(--border-light)" }}>
+        <div style={{ background: "var(--bg-soft)", padding: "1.5rem", borderRadius: "12px", textAlign: "left", marginBottom: "1.5rem", border: "1px solid var(--border-light)" }}>
           <h3 style={{ margin: "0 0 0.5rem 0", color: "var(--text-primary)" }}>{program.title}</h3>
           <p style={{ margin: "0 0 1rem 0", color: "var(--text-secondary)", fontSize: "0.9rem" }}>{program.description || "A comprehensive learning journey."}</p>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px dashed var(--border-light)", paddingTop: "1rem" }}>
@@ -101,7 +102,7 @@ function CheckoutContent() {
         </div>
 
         {!user ? (
-          <div style={{ background: "#fffbf0", padding: "1rem", borderRadius: "8px", marginBottom: "1.5rem", border: "1px solid #ffce20", textAlign: "left", fontSize: "0.9rem" }}>
+          <div style={{ background: "var(--accent-highlight)", padding: "1rem", borderRadius: "8px", marginBottom: "1.5rem", border: "1px solid var(--border-light)", textAlign: "left", fontSize: "0.9rem" }}>
             <strong>Hold on!</strong> You need to be logged in to complete this purchase. 
             <br/><br/>
             <Link href={`/login?programId=${programId}`} style={{ fontWeight: "bold", color: "var(--accent-primary)" }}>Log in</Link> or <Link href={`/signup?programId=${programId}`} style={{ fontWeight: "bold", color: "var(--accent-primary)" }}>Sign up</Link> to continue.

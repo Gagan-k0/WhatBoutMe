@@ -4,6 +4,7 @@ import { useEffect, useState, use } from "react";
 import styles from "../../../../page.module.css";
 import Link from "next/link";
 import MuxUploader from "@mux/mux-uploader-react";
+import { API_URL, errorMessage, uploadFile } from "../../../../lib/api";
 
 interface Lesson {
   id: string;
@@ -30,6 +31,28 @@ export default function StepLessonsPage({ params }: { params: Promise<{ id: stri
   const [title, setTitle] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const [pdfStatus, setPdfStatus] = useState("");
+
+  // Upload a PDF and add it to this module as a lesson
+  const handlePdfSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPdfStatus("Uploading PDF...");
+    try {
+      const url = await uploadFile(file);
+      const res = await fetch(`${API_URL}/programs/steps/${stepId}/lessons`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: file.name.replace(/\.pdf$/i, ""), type: "PDF", mediaUrl: url }),
+      });
+      if (!res.ok) throw new Error(await errorMessage(res, "The PDF uploaded, but could not be added to this module"));
+      setPdfStatus("");
+      fetchLessons();
+    } catch (err) {
+      setPdfStatus(err instanceof Error ? err.message : "Could not upload the PDF.");
+    }
+  };
 
   useEffect(() => {
     fetchLessons();
@@ -122,11 +145,19 @@ export default function StepLessonsPage({ params }: { params: Promise<{ id: stri
           <Link href={`/quizzes/create?programId=${programId}&stepId=${stepId}`} className={styles.secondaryBtn}>
             + Add quiz
           </Link>
+          <label className={styles.secondaryBtn} style={{ cursor: 'pointer', margin: 0 }}>
+            + Add PDF
+            <input type="file" accept="application/pdf" onChange={handlePdfSelected} style={{ display: 'none' }} />
+          </label>
           <button className={styles.primaryBtn} onClick={openUploadModal}>
             + Add video
           </button>
         </div>
       </header>
+
+      {pdfStatus && (
+        <p role="status" style={{ margin: '0 0 1rem', padding: '0.75rem 1rem', borderRadius: '8px', background: 'var(--bg-main)', fontSize: '0.9rem' }}>{pdfStatus}</p>
+      )}
 
       <section className={styles.tableSection}>
         <div className={styles.sectionHeader}>

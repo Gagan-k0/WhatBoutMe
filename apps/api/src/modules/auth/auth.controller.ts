@@ -2,16 +2,19 @@ import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { Public } from '../../common/decorators/public.decorator.js';
-import { IsString, IsEmail, IsNotEmpty, IsOptional, IsArray } from 'class-validator';
+import { IsString, IsEmail, IsNotEmpty, IsOptional, IsArray, ValidateIf } from 'class-validator';
 
 export class LoginDto {
-  @IsEmail() @IsNotEmpty() email: string;
+  // sign in with either the account email or its mobile number
+  @ValidateIf((o) => !o.phone) @IsEmail() @IsNotEmpty() email?: string;
+  @ValidateIf((o) => !o.email) @IsString() @IsNotEmpty() phone?: string;
   @IsString() @IsNotEmpty() password: string;
 }
 
 export class SignupDto {
   @IsString() @IsNotEmpty() name: string;
   @IsEmail() @IsNotEmpty() email: string;
+  @IsOptional() @IsString() phone?: string;
   @IsString() @IsNotEmpty() password: string;
   @IsOptional() @IsArray() @IsString({ each: true }) programIds?: string[];
 }
@@ -20,8 +23,13 @@ export class RefreshDto {
   @IsString() @IsNotEmpty() refresh_token: string;
 }
 
+// Strict limit for the endpoints that take a password. Applied per endpoint,
+// not to the whole controller: /auth/me, /auth/session and /auth/refresh are
+// called on every page load and by the 60-second session check, and under the
+// strict limit a signed-in learner was bounced back to the login page.
+const CREDENTIAL_LIMIT = { default: { limit: 5, ttl: 60000 } };
+
 @Controller('auth')
-@Throttle({ default: { limit: 5, ttl: 60000 } })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -29,15 +37,17 @@ export class AuthController {
    * Learner Login: POST /auth/login
    */
   @Public()
+  @Throttle(CREDENTIAL_LIMIT)
   @Post('login')
   login(@Body() body: LoginDto) {
-    return this.authService.login(body.email, body.password);
+    return this.authService.login(body.email ?? body.phone ?? '', body.password);
   }
 
   /**
    * Learner Signup: POST /auth/signup
    */
   @Public()
+  @Throttle(CREDENTIAL_LIMIT)
   @Post('signup')
   signup(@Body() body: SignupDto) {
     return this.authService.signup(body);
@@ -48,9 +58,10 @@ export class AuthController {
    * Only ADMIN / SUPER_ADMIN / MANAGER roles can use this.
    */
   @Public()
+  @Throttle(CREDENTIAL_LIMIT)
   @Post('admin-login')
   adminLogin(@Body() body: LoginDto) {
-    return this.authService.adminLogin(body.email, body.password);
+    return this.authService.adminLogin(body.email ?? '', body.password);
   }
 
   /**
@@ -75,8 +86,11 @@ export class AuthController {
    * Check session status: GET /auth/session
    */
   @Get('session')
-  checkSession(@Request() req: any) {
-    return this.authService.checkSession(req.user.sessionId);
+  async checkSession(@Request() req: any) {
+    // throws when the session has ended; the row itself (it holds the
+    // refresh-token hash) stays on the server
+    await this.authService.checkSession(req.user.sessionId);
+    return { active: true };
   }
 
   /**

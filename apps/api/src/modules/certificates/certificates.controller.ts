@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Request } from '@nestjs/common';
+import { Body, Controller, Get, Post, Param, Request } from '@nestjs/common';
 import { CertificatesService } from './certificates.service.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { Role } from '@prisma/client';
@@ -24,6 +24,13 @@ export class CertificatesController {
   @Post('request/:enrolmentId')
   requestCertificate(@Param('enrolmentId') enrolmentId: string, @Request() req: any) {
     return this.certificatesService.requestCertificate(enrolmentId, req.user.sub);
+  }
+
+  // Admin: issue to every learner in a batch
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Post('batch/:batchId/issue')
+  issueForBatch(@Param('batchId') batchId: string, @Body('includeUnfinished') includeUnfinished: unknown) {
+    return this.certificatesService.issueForBatch(batchId, includeUnfinished === true);
   }
 
   // Admin: Approve

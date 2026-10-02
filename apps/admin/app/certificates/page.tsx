@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { API_URL, errorMessage } from "../lib/api";
 import styles from "../page.module.css";
 
 export default function CertificatesQueue() {
@@ -11,15 +13,18 @@ export default function CertificatesQueue() {
     fetchCertificates();
   }, []);
 
+  const [notice, setNotice] = useState("");
+
   const fetchCertificates = async () => {
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("whatboutme_admin_token") || localStorage.getItem("whatboutme_token");
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/certificates`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // the AuthProvider adds the sign-in token; this page used to send its
+      // own from a storage key that does not exist, so the list never loaded
+      const res = await fetch(`${API_URL}/certificates`);
       if (res.ok) {
         setCertificates(await res.json());
+      } else {
+        setNotice(await errorMessage(res, "Could not load the certificates"));
       }
     } catch (e) {
       console.error(e);
@@ -30,13 +35,13 @@ export default function CertificatesQueue() {
 
   const handleAction = async (id: string, action: 'approve' | 'reject') => {
     try {
-      const token = localStorage.getItem("whatboutme_admin_token") || localStorage.getItem("whatboutme_token");
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/certificates/${id}/${action}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      setNotice("");
+      const res = await fetch(`${API_URL}/certificates/${id}/${action}`, { method: 'POST' });
       if (res.ok) {
         fetchCertificates(); // Refresh queue
+      } else {
+        // e.g. the learner has not finished the course yet
+        setNotice(await errorMessage(res, `Could not ${action} the certificate`));
       }
     } catch (e) {
       console.error(e);
@@ -50,7 +55,14 @@ export default function CertificatesQueue() {
           <h1 className={styles.title}>Certificate Approval Queue</h1>
           <p className={styles.subtitle}>Review and approve pending certificate requests from learners.</p>
         </div>
+        <div className={styles.headerActions}>
+          <Link href="/certificates/issue" className={styles.primaryBtn} style={{ textDecoration: "none" }}>Issue Certificates</Link>
+        </div>
       </header>
+
+      {notice && (
+        <p role="alert" style={{ margin: "0 0 1.5rem", padding: "0.75rem 1rem", borderRadius: "8px", fontSize: "0.9rem", background: "var(--status-error-bg)", color: "var(--status-error)" }}>{notice}</p>
+      )}
 
       <section className={styles.tableSection}>
         <div className={styles.tableWrapper}>
@@ -99,7 +111,7 @@ export default function CertificatesQueue() {
                       </div>
                     )}
                     {cert.status === 'APPROVED' && (
-                      <a href={cert.pdfUrl} target="_blank" rel="noreferrer" className={styles.secondaryBtn} style={{ textDecoration: 'none', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>View PDF</a>
+                      <Link href={`/certificates/${cert.id}`} className={styles.secondaryBtn} style={{ textDecoration: 'none', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>View Certificate</Link>
                     )}
                   </td>
                 </tr>

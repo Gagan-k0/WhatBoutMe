@@ -1,5 +1,8 @@
 generator client {
   provider = "prisma-client-js"
+  // nested relations load in a single joined query instead of one query per
+  // level; each query is a round trip to a distant database
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -121,6 +124,7 @@ model User {
   messagesSent   Message[]
   sessions       UserSession[]
   notifications  Notification[]
+  dailyAttendance DailyAttendance[]
 
   // Soft Delete for GDPR
   deletedAt DateTime?
@@ -378,6 +382,25 @@ model Attendance {
 // -----------------------------------------------------------------------------
 // PAYMENTS & CERTIFICATIONS
 // -----------------------------------------------------------------------------
+
+// One row per learner per calendar day they were active. A day counts as
+// present when any flag is set: they opened the portal or signed in, finished
+// a course step, or joined a live session.
+model DailyAttendance {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date          String // YYYY-MM-DD in the attendance time zone
+  visited       Boolean @default(false)
+  lessonDone    Boolean @default(false)
+  sessionJoined Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+}
 
 model Payment {
   id          String    @id @default(uuid())

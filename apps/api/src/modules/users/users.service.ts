@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { forgetSessions } from '../../common/session-cache.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 @Injectable()
@@ -75,10 +76,14 @@ export class UsersService {
 
   async create(data: any) {
     const bcrypt = await import('bcryptjs');
-    if (data.passwordHash) {
-      data.passwordHash = await bcrypt.hash(data.passwordHash, 12);
+    // The request is validated with a plain `password` field; older callers
+    // sent the plain text as `passwordHash`. Either way it is hashed here.
+    const { password, passwordHash, ...userData } = data;
+    const plain = password ?? passwordHash;
+    if (plain) {
+      userData.passwordHash = await bcrypt.hash(plain, 12);
     }
-    return this.prisma.user.create({ data });
+    return this.prisma.user.create({ data: userData });
   }
 
   async update(id: string, data: any) {
@@ -114,6 +119,7 @@ export class UsersService {
         where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date(), revokedReason: revokeReason }
       });
+    forgetSessions();
     }
 
     return this.prisma.user.update({
@@ -127,6 +133,7 @@ export class UsersService {
       where: { userId: id, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'USER_DELETED' }
     });
+    forgetSessions();
     return this.prisma.user.delete({
       where: { id },
     });
@@ -144,6 +151,7 @@ export class UsersService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'ADMIN_REVOKED' }
     });
+    forgetSessions();
 
     await this.prisma.logAction({
       action: 'SESSIONS_REVOKED',

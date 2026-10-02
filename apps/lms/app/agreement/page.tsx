@@ -18,7 +18,7 @@ export default function LearnerAgreement() {
         <p>Please review and sign the terms before beginning your journey.</p>
         
         <div style={{
-          background: 'var(--bg-main)',
+          background: 'var(--bg-soft)',
           border: '1px solid var(--border-light)',
           padding: '1.5rem',
           borderRadius: '12px',

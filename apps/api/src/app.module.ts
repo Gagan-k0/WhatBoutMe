@@ -13,6 +13,7 @@ import { RevenueModule } from './modules/revenue/revenue.module.js';
 import { SessionsModule } from './modules/sessions/sessions.module.js';
 import { CertificatesModule } from './modules/certificates/certificates.module.js';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module.js';
+import { WebsiteModule } from './modules/website/website.module.js';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 import { APP_GUARD } from '@nestjs/core';
@@ -30,10 +31,14 @@ import { UpstashThrottlerStorage } from './common/throttler/upstash.storage.js';
           {
             name: 'default',
             ttl: 60000,
-            limit: 100, // 100 reqs / min
+            limit: 300, // 300 reqs / min; three apps share one address in an office
           }
         ],
-        storage: new UpstashThrottlerStorage(),
+        // Shared Redis counter when configured; otherwise the built-in in-memory
+        // counter, so the API still runs locally without Upstash credentials.
+        storage: process.env.UPSTASH_REDIS_REST_URL
+          ? new UpstashThrottlerStorage()
+          : undefined,
       }),
     }),
     UsersModule,
@@ -47,6 +52,7 @@ import { UpstashThrottlerStorage } from './common/throttler/upstash.storage.js';
     SessionsModule,
     CertificatesModule,
     EnrollmentsModule,
+    WebsiteModule,
   ],
   controllers: [AppController],
   providers: [

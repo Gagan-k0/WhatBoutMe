@@ -95,7 +95,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className={styles.statChevron}><Icons.ChevronRight /></div>
-          <div className={styles.statBgChart} style={{ color: '#e8f5ed' }}><Icons.ChartBars /></div>
+          <div className={styles.statBgChart} style={{ color: 'var(--accent-highlight)' }}><Icons.ChartBars /></div>
         </div>
 
         {/* Total Batches */}
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
         <div className={styles.sectionHeader}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ padding: '0.4rem', background: '#e8f5ed', color: '#15803d', borderRadius: '8px', display: 'flex' }}>
+              <div style={{ padding: '0.4rem', background: 'var(--accent-highlight)', color: 'var(--accent-primary)', borderRadius: '8px', display: 'flex' }}>
                 <Icons.Report />
               </div>
               <h2>Recent Enrolments</h2>

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { markDailyAttendance } from '../../common/daily-attendance.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 @Injectable()
@@ -164,5 +165,46 @@ export class ProgramsService {
     return this.prisma.lesson.delete({
       where: { id: lessonId }
     });
+  }
+
+  /**
+   * Records that a learner finished a step: its lessons are marked viewed, a
+   * passed quiz is stored, and the learner counts as present for the day.
+   * This is what moves the progress bars; before it, progress lived only in
+   * the learner's browser.
+   */
+  async completeStep(stepId: string, userId: string, score?: number) {
+    const step = await this.prisma.step.findUnique({
+      where: { id: stepId },
+      include: { lessons: { select: { id: true } }, quiz: { select: { id: true } } },
+    });
+    if (!step) throw new NotFoundException('Step not found');
+
+    const enrolment = await this.prisma.enrolment.findFirst({
+      where: { userId, programId: step.programId, status: { in: ['ACTIVE', 'COMPLETED'] } },
+    });
+    if (!enrolment) throw new ForbiddenException('You are not enrolled in this course');
+
+    for (const lesson of step.lessons) {
+      await this.prisma.userLessonProgress.upsert({
+        where: { enrolmentId_lessonId: { enrolmentId: enrolment.id, lessonId: lesson.id } },
+        create: { enrolmentId: enrolment.id, lessonId: lesson.id, viewed: true },
+        update: { viewed: true },
+      });
+    }
+
+    if (step.quiz) {
+      const passed = await this.prisma.attempt.findFirst({
+        where: { enrolmentId: enrolment.id, quizId: step.quiz.id, status: 'PASSED' },
+      });
+      if (!passed) {
+        await this.prisma.attempt.create({
+          data: { enrolmentId: enrolment.id, quizId: step.quiz.id, status: 'PASSED', score: score ?? null },
+        });
+      }
+    }
+
+    await markDailyAttendance(this.prisma, userId, 'lessonDone');
+    return { stepId, completed: true };
   }
 }
